@@ -10,12 +10,14 @@ namespace ValheimPlus.Configurations.Sections
         private ConfigEntry<float> backwardSpeedEntry;
         private ConfigEntry<float> rudderSpeedEntry;
         private ConfigEntry<float> steerForceEntry;
+        private ConfigEntry<float> sailForceEntry;
         private ConfigEntry<float> waterImpactDamageEntry;
 
         public float forwardSpeed => forwardSpeedEntry.Value;
         public float backwardSpeed => backwardSpeedEntry.Value;
         public float rudderSpeed => rudderSpeedEntry.Value;
         public float steerForce => steerForceEntry.Value;
+        public float sailForce => sailForceEntry.Value;
         public float waterImpactDamage => waterImpactDamageEntry.Value;
 
         public override void Bind(ConfigFile config)
@@ -30,6 +32,8 @@ namespace ValheimPlus.Configurations.Sections
                 "This value determines the speed of turning the wheel of the ship.\nA multiplier of 50 will result in the wheel turning 50% faster, -50 will result in the opposite.");
             steerForceEntry = Bind(config, Section, "steerForce", 0f,
                 "This value determines the force applied to the ship when steering.\nA multiplier of 50 will result in the ship turning 50% faster, -50 will result in the opposite.");
+            sailForceEntry = Bind(config, Section, "sailForce", 0f,
+                "This value determines the force applied to the ship's sails.\nA multiplier of 50 will result in the ship sailing 50% faster, -50 will result in the opposite.");
             waterImpactDamageEntry = Bind(config, Section, "waterImpactDamage", 0f,
                 "This value determines the amount of damage the ship takes while sailing.\nA multiplier of 50 will result in the ship taking 50% more damage, -50 will result in the opposite.");
         }

@@ -14,6 +14,7 @@ namespace ValheimPlus.GameClasses
             if (!shipConfig.IsEnabled) return;
 
             Helper.applyModifierValueTo(ref __instance.m_force, shipConfig.forwardSpeed);
+            Helper.applyModifierValueTo(ref __instance.m_sailForceFactor, shipConfig.sailForce);
             Helper.applyModifierValueTo(ref __instance.m_stearForce, shipConfig.steerForce);
             Helper.applyModifierValueTo(ref __instance.m_backwardForce, shipConfig.backwardSpeed);
             Helper.applyModifierValueTo(ref __instance.m_waterImpactDamage, shipConfig.waterImpactDamage);
