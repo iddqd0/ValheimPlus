@@ -630,7 +630,7 @@ namespace ValheimPlus.GameClasses
                 if (Configuration.Current.AutoStack.ignoreAmmo && item.IsAmmo())
                     continue;
 
-                if (Configuration.Current.AutoStack.ignoreFood && item.IsFood())
+                if (Configuration.Current.AutoStack.ignoreFood && item.IsFood() && item.m_crafterID != 0L)
                     continue;
 
                 if (Configuration.Current.AutoStack.ignoreMead && item.IsMead())

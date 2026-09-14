@@ -35,7 +35,7 @@ namespace ValheimPlus.Configurations.Sections
             ignoreAmmoEntry = Bind(config, Section, "ignoreAmmo", false,
                 "Set to true to prevent arrows and bolts to be stored automatically.");
             ignoreFoodEntry = Bind(config, Section, "ignoreFood", false,
-                "Set to true to prevent food items to be stored automatically.");
+                "Set to true to prevent crafted food items to be stored automatically.");
             ignoreMeadEntry = Bind(config, Section, "ignoreMead", false,
                 "Set to true to prevent mead to be stored automatically.");
             replyTimeoutEntry = Bind(config, Section, "replyTimeout", 1f, 0.25f, 5f,
