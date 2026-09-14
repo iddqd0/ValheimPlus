@@ -22,6 +22,25 @@ namespace ValheimPlus.GameClasses
                 ___m_secPerUnit = config.sapProductionSpeed;
                 ___m_maxLevel = config.maximumSapPerCollector;
             }
+
+            // Hold the first auto-deposit until nearby chests have loaded.
+            [HarmonyTranspiler]
+            [UsedImplicitly]
+            private static IEnumerable<CodeInstruction> Transpiler(IEnumerable<CodeInstruction> instructions)
+            {
+                var config = Configuration.Current.SapCollector;
+                if (!config.IsEnabled || !config.autoDeposit) return instructions;
+
+                return Utility.GameObjectAssistant.ReplaceInvokeRepeating(instructions, nameof(SapCollector_Awake_Patch),
+                    nameof(SapCollector.UpdateTick), AccessTools.Method(typeof(SapCollector_Awake_Patch), nameof(InvokeRepeatingWhenChestsLoaded)));
+            }
+
+            private static void InvokeRepeatingWhenChestsLoaded(SapCollector sapCollector, string methodName, float delay, float rate)
+            {
+                var config = Configuration.Current.SapCollector;
+                Utility.GameObjectAssistant.InvokeRepeatingWhenChestsLoaded(sapCollector, methodName, delay, rate,
+                    config.IsEnabled && config.autoDeposit ? Helper.Clamp(config.autoDepositRange, 1, 50) : 0f);
+            }
         }
 
         /// <summary>
@@ -74,7 +93,7 @@ namespace ValheimPlus.GameClasses
             if (__instance.m_nview?.IsOwner() != true) return;
 
             // find nearby chests
-            var nearbyChests = InventoryAssistant.GetNearbyChests(__instance.gameObject,
+            var nearbyChests = InventoryAssistant.GetNearbyChestsForMachine(__instance.gameObject,
                 Helper.Clamp(Configuration.Current.SapCollector.autoDepositRange, 1, 50));
             
             if (nearbyChests.Count == 0) return;

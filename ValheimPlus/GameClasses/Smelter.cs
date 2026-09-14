@@ -60,6 +60,49 @@ namespace ValheimPlus.GameClasses
             }
         }
 
+        private static readonly string[] AutoDepositSmelterNames =
+        {
+            SmelterDefinitions.KilnName, SmelterDefinitions.SmelterName, SmelterDefinitions.FurnaceName,
+            SmelterDefinitions.WindmillName, SmelterDefinitions.SpinningWheelName, SmelterDefinitions.EitrRefineryName
+        };
+
+        // Hold the first update, catch-up included, until nearby chests have loaded to receive the output.
+        [HarmonyTranspiler]
+        private static IEnumerable<CodeInstruction> Transpiler(IEnumerable<CodeInstruction> instructions)
+        {
+            if (!AutoDepositSmelterNames.Any(AutoDepositEnabled)) return instructions;
+
+            return GameObjectAssistant.ReplaceInvokeRepeating(instructions, nameof(Smelter_Awake_Patch),
+                nameof(Smelter.UpdateSmelter), AccessTools.Method(typeof(Smelter_Awake_Patch), nameof(InvokeRepeatingWhenChestsLoaded)));
+        }
+
+        private static void InvokeRepeatingWhenChestsLoaded(Smelter smelter, string methodName, float delay, float rate) =>
+            GameObjectAssistant.InvokeRepeatingWhenChestsLoaded(smelter, methodName, delay, rate,
+                AutoDepositEnabled(smelter.m_name) ? Helper.Clamp(AutoRange(smelter.m_name), 1, 50) : 0f);
+
+        private static float AutoRange(string name)
+        {
+            var config = Configuration.Current;
+            if (name.Equals(SmelterDefinitions.KilnName)) return config.Kiln.autoRange;
+            if (name.Equals(SmelterDefinitions.SmelterName)) return config.Smelter.autoRange;
+            if (name.Equals(SmelterDefinitions.FurnaceName)) return config.Furnace.autoRange;
+            if (name.Equals(SmelterDefinitions.WindmillName)) return config.Windmill.autoRange;
+            if (name.Equals(SmelterDefinitions.SpinningWheelName)) return config.SpinningWheel.autoRange;
+            if (name.Equals(SmelterDefinitions.EitrRefineryName)) return config.EitrRefinery.autoRange;
+            return 0f;
+        }
+
+        private static bool AutoDepositEnabled(string name)
+        {
+            var config = Configuration.Current;
+            if (name.Equals(SmelterDefinitions.KilnName)) return config.Kiln.IsEnabled && config.Kiln.autoDeposit;
+            if (name.Equals(SmelterDefinitions.SmelterName)) return config.Smelter.IsEnabled && config.Smelter.autoDeposit;
+            if (name.Equals(SmelterDefinitions.FurnaceName)) return config.Furnace.IsEnabled && config.Furnace.autoDeposit;
+            if (name.Equals(SmelterDefinitions.WindmillName)) return config.Windmill.IsEnabled && config.Windmill.autoDeposit;
+            if (name.Equals(SmelterDefinitions.SpinningWheelName)) return config.SpinningWheel.IsEnabled && config.SpinningWheel.autoDeposit;
+            if (name.Equals(SmelterDefinitions.EitrRefineryName)) return config.EitrRefinery.IsEnabled && config.EitrRefinery.autoDeposit;
+            return false;
+        }
     }
 
     [HarmonyPatch(typeof(Smelter), nameof(Smelter.Spawn))]
@@ -97,7 +140,7 @@ namespace ValheimPlus.GameClasses
             }
             bool spawn(float autoDepositRange, bool ignorePrivateAreaCheck)
             {
-                List<Container> nearbyChests = InventoryAssistant.GetNearbyChests(smelter.gameObject, autoDepositRange, !ignorePrivateAreaCheck);
+                List<Container> nearbyChests = InventoryAssistant.GetNearbyChestsForMachine(smelter.gameObject, autoDepositRange, !ignorePrivateAreaCheck);
                 if (nearbyChests.Count == 0)
                     return true;
 
@@ -166,7 +209,7 @@ namespace ValheimPlus.GameClasses
     {
         static void Prefix(Smelter __instance)
         {
-            if (__instance == null || !Player.m_localPlayer || __instance.m_nview == null || !__instance.m_nview.IsOwner())
+            if (__instance == null || __instance.m_nview == null || !__instance.m_nview.IsOwner())
                 return;
 
             Smelter smelter = __instance;
@@ -251,7 +294,9 @@ namespace ValheimPlus.GameClasses
                 ItemDrop.ItemData fuelItemData = smelter.m_fuelItem.m_itemData;
 
                 // Check for fuel in nearby containers
-                int addedFuel = InventoryAssistant.RemoveItemInAmountFromAllNearbyChests(smelter.gameObject, autoFuelRange, fuelItemData, toMaxFuel, !ignorePrivateAreaCheck);
+                int addedFuel = InventoryAssistant.RemoveItemInAmountFromChests(
+                    InventoryAssistant.GetNearbyChestsForMachine(smelter.gameObject, autoFuelRange, !ignorePrivateAreaCheck),
+                    fuelItemData, toMaxFuel);
                 for (int i = 0; i < addedFuel; i++)
                 {
                     smelter.m_nview.InvokeRPC("RPC_AddFuel", new object[] { });
@@ -261,7 +306,7 @@ namespace ValheimPlus.GameClasses
             }
             if (toMaxOre > 0)
             {
-                List<Container> nearbyChests = InventoryAssistant.GetNearbyChests(smelter.gameObject, autoFuelRange);
+                List<Container> nearbyChests = InventoryAssistant.GetNearbyChestsForMachine(smelter.gameObject, autoFuelRange, !ignorePrivateAreaCheck);
                 foreach (Container c in nearbyChests)
                 {
                     foreach (Smelter.ItemConversion itemConversion in smelter.m_conversion)

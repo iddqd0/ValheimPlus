@@ -64,7 +64,10 @@ namespace ValheimPlus.GameClasses
         [UsedImplicitly]
         public static IEnumerable<CodeInstruction> Transpiler(IEnumerable<CodeInstruction> instructions)
         {
-            if (!Configuration.Current.Inventory.IsEnabled) return instructions;
+            if (!Configuration.Current.Inventory.IsEnabled || Configuration.Current.Inventory.playerInventoryRows <= 4)
+            {
+                return instructions;
+            }
 
             var il = instructions.ToList();
             try
@@ -105,7 +108,10 @@ namespace ValheimPlus.GameClasses
         [UsedImplicitly]
         public static void Prefix(Player __instance)
         {
-            if (!Configuration.Current.Inventory.IsEnabled) return;
+            if (!Configuration.Current.Inventory.IsEnabled || Configuration.Current.Inventory.playerInventoryRows <= 4)
+            {
+                return;
+            }
             if (__instance == null) return;
 
             // Height only, and no GUI, which is sized on spawn once InventoryGui exists.
@@ -125,7 +131,10 @@ namespace ValheimPlus.GameClasses
         [UsedImplicitly]
         public static void Postfix(Player __instance)
         {
-            if (!Configuration.Current.Inventory.IsEnabled) return;
+            if (!Configuration.Current.Inventory.IsEnabled || Configuration.Current.Inventory.playerInventoryRows <= 4)
+            {
+                return;
+            }
             if (__instance == null || __instance != Player.m_localPlayer) return;
 
             // Size directly, since SetInventorySize would save the config value as the character's own.
@@ -248,7 +257,7 @@ namespace ValheimPlus.GameClasses
             var openInRange = openChest && nearby.Contains(openChest) ? 1 : 0;
             Log(id, $"as session {ZDOMan.GetSessionID()}, range {range}, reply timeout {timeout}s: " +
                     $"{nearby.Count} chest(s) in range, {Candidates.Count} to ask, {openInRange} already open " +
-                    $"holding {movedIntoOpenChest} item(s) of ours, {skippedInUse} in use, " +
+                    $"holding {movedIntoOpenChest} item(s) of ours, " +
                     $"{skippedNoMatch} with nothing to match, {skippedUnreadable} unreadable.");
 
             // Chests we own answer before StackAll returns, so every chest must be pending first.
@@ -289,8 +298,12 @@ namespace ValheimPlus.GameClasses
             }
             else
             {
-                chestsMissed++;
-                Log(sweep, $"was refused by {Describe(chest)}, which is in use or not ours to use.");
+                // The reply doesn't say why, but a refusal while the chest's shared flag is set means someone has it open.
+                var inUse = chest && chest.m_nview && chest.m_nview.IsValid() &&
+                            chest.m_nview.GetZDO().GetInt(ZDOVars.s_inUse) == 1;
+                if (inUse) skippedInUse++;
+                else chestsMissed++;
+                Log(sweep, $"was refused by {Describe(chest)}, which is {(inUse ? "in use" : "not ours to use")}.");
             }
 
             return true;
@@ -349,20 +362,13 @@ namespace ValheimPlus.GameClasses
             }
         }
 
-        /// <summary>A loaded chest nobody has open, holding something the player would stack.</summary>
+        /// <summary>A loaded chest holding something the player would stack.</summary>
         private static bool IsCandidate(Container chest, Player player)
         {
             var view = chest.m_nview;
             if (!view || !view.IsValid())
             {
                 skippedUnreadable++;
-                return false;
-            }
-
-            // IsInUse is only set on the owner, so check what the owner shares with everyone else too.
-            if (chest.IsInUse() || view.GetZDO().GetInt(ZDOVars.s_inUse) == 1)
-            {
-                skippedInUse++;
                 return false;
             }
 
@@ -379,17 +385,19 @@ namespace ValheimPlus.GameClasses
             }
 
             // Asking only matching chests avoids taking ownership of every chest in range.
-            var chestInventory = chest.GetInventory();
-            foreach (var item in player.GetInventory().GetAllItems())
+            if (!Matching(chest.GetInventory(), player).Any())
             {
-                if (!player.IsItemEquiped(item) &&
-                    Inventory_StackAll_Patch.ContainsItemByName(chestInventory, item.m_shared.m_name))
-                    return true;
+                skippedNoMatch++;
+                return false;
             }
 
-            skippedNoMatch++;
-            return false;
+            return true;
         }
+
+        /// <summary>Unequipped items the player carries that Stack All would put in this chest.</summary>
+        private static IEnumerable<ItemDrop.ItemData> Matching(Inventory chest, Player player) =>
+            player.GetInventory().GetAllItems().Where(item =>
+                !player.IsItemEquiped(item) && Inventory_StackAll_Patch.ContainsItemByName(chest, item.m_shared.m_name));
 
         /// <summary>True while the chest is ours to write to.</summary>
         private static bool IsOwned(Container chest) =>
@@ -478,14 +486,17 @@ namespace ValheimPlus.GameClasses
                 Granted.Clear();
             }
 
+            var unavailable = chestsMissed + skippedUnreadable;
+
             var message = itemsMoved > 0
                 ? $"$msg_stackall {itemsMoved} in {chestsStacked} Chests"
                 : "$msg_stackall_none";
-            if (chestsMissed > 0) message += $", {chestsMissed} unavailable";
+            if (skippedInUse > 0) message += $", {skippedInUse} in use";
+            if (unavailable > 0) message += $", {unavailable} unavailable";
             player.Message(MessageHud.MessageType.Center, message);
 
-            Log(id, $"done in {Ms}ms: {itemsMoved} item(s) into {chestsStacked} chest(s), " +
-                    $"{chestsMissed} unavailable.");
+            Log(id, $"done in {Ms}ms: {itemsMoved} item(s) into {chestsStacked} chest(s), {skippedInUse} in use, " +
+                    $"{unavailable} unavailable ({chestsMissed} missed, {skippedUnreadable} unreadable).");
         }
 
         private static string NameOf(Container chest) => chest ? chest.name : "a missing chest";
@@ -532,7 +543,7 @@ namespace ValheimPlus.GameClasses
         {
             public bool Starts;
             public bool Message;
-            public int ItemsBefore;
+            public int ChestItemsBefore;
         }
 
         /// <summary>Hold back the game's message for a call that starts a sweep, which shows a summary instead.</summary>
@@ -553,7 +564,7 @@ namespace ValheimPlus.GameClasses
             {
                 Starts = true,
                 Message = message,
-                ItemsBefore = fromInventory.CountItems(null)
+                ChestItemsBefore = __instance.CountItems(null)
             };
             message = false;
             return true;
@@ -561,11 +572,11 @@ namespace ValheimPlus.GameClasses
 
         /// <summary>Start the sweep over nearby chests.</summary>
         [UsedImplicitly]
-        private static void Postfix(Inventory fromInventory, ref int __result, SweepStart __state)
+        private static void Postfix(Inventory __instance, ref int __result, SweepStart __state)
         {
             if (!__state.Starts) return;
 
-            var moved = __state.ItemsBefore - fromInventory.CountItems(null);
+            var moved = __instance.CountItems(null) - __state.ChestItemsBefore;
 
             // Without its message the game returns the chest's total, so give the caller what actually moved.
             if (__state.Message) __result = moved;

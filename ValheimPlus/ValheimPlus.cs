@@ -28,7 +28,7 @@ namespace ValheimPlus
         private const string ValheimPlusName = "Valheim Plus";
 
         // Version used when numeric is required (assembly info, bepinex, System.Version parsing).
-        public const string NumericVersion = "0.10.1.1";
+        public const string NumericVersion = "0.10.1.2";
 
         // Extra version, like alpha/beta/rc/stable. Can leave blank if a stable release.
         private const string VersionExtra = "";
@@ -69,6 +69,8 @@ namespace ValheimPlus
 
         private static readonly Harmony Harmony = new("mod.valheim_plus");
 
+        private static bool configLoaded;
+
         // Project Repository Info
         public const string Repository = "https://github.com/Grantapher/ValheimPlus/releases/latest";
         private const string ApiRepository = "https://api.github.com/repos/grantapher/valheimPlus/releases/latest";
@@ -99,6 +101,7 @@ namespace ValheimPlus
             try
             {
                 BepInExConfig.Load(Config);
+                configLoaded = true;
                 Logger.LogInfo($"Configuration loaded successfully from '{Config.ConfigFilePath}'.");
 
                 PatchAll();
@@ -129,6 +132,12 @@ namespace ValheimPlus
             {
                 Logger.LogError($"Error while loading the configuration: {e}");
             }
+        }
+
+        // Start runs after every plugin's Awake, so mods loading after us are visible to the conflict checks.
+        private void Start()
+        {
+            if (configLoaded) BepInExConfig.ResolveModConflicts();
         }
 
         private static bool IsGameVersionTooOld() => Version.CurrentVersion < MinSupportedGameVersion;
